@@ -1,17 +1,18 @@
 package location.detailed.com.mydetailedlocation
 
 import android.app.Activity
-import android.content.Context
-import android.content.Intent
-import android.content.IntentSender
+import android.content.*
 import android.content.pm.PackageManager
 import android.location.*
 import android.location.LocationListener
+import android.net.Uri
 import android.os.Bundle
-import android.provider.Telephony
 import android.support.v4.app.ActivityCompat
 import android.support.v4.content.ContextCompat
 import android.support.v7.app.AppCompatActivity
+import android.view.View
+import android.widget.Button
+import android.widget.TextView
 import android.widget.Toast
 import com.google.android.gms.common.ConnectionResult
 import com.google.android.gms.common.api.GoogleApiClient
@@ -21,8 +22,10 @@ import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.GoogleMap
 import com.google.android.gms.maps.OnMapReadyCallback
 import com.google.android.gms.maps.SupportMapFragment
+import com.google.android.gms.maps.model.CameraPosition
 import com.google.android.gms.maps.model.LatLng
 import com.google.android.gms.maps.model.MarkerOptions
+import com.sothree.slidinguppanel.SlidingUpPanelLayout
 import java.util.*
 
 
@@ -32,12 +35,17 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback,
         LocationListener,
         ResultCallback<LocationSettingsResult> {
 
-    var mGoogleApiClient: GoogleApiClient? = null
     private lateinit var mMap: GoogleMap
     private val REQUEST_CODE: Int = 101
     private val REQUEST_CHECK_SETTINGS: Int = 102
     private var locationListener: LocationListener? = null
     private var googleApiClient: GoogleApiClient? = null
+    private var slidingUpPanelLayout: SlidingUpPanelLayout?=null
+    private var mainContent: TextView? = null
+    private var clipToBoard: Button? = null
+    private var shareLocation: Button? = null
+    private var lat : Double? = null
+    private var lon: Double? = null
 
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -47,18 +55,39 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback,
         val mapFragment = supportFragmentManager
                 .findFragmentById(R.id.map) as SupportMapFragment
         mapFragment.getMapAsync(this)
+        slidingUpPanelLayout = findViewById(R.id.sliding_layout) as SlidingUpPanelLayout?
+        mainContent = findViewById(R.id.main_content) as TextView?
+        clipToBoard = findViewById(R.id.clipboard) as Button?
+        shareLocation = findViewById(R.id.shareLoc) as Button?
 
-        buildGoogleApiClient()
         displayLocationSettingsRequest()
         getCurrentLocation()
+        performSlidingOperation()
+        buttonsLogic()
     }
 
-    private fun buildGoogleApiClient() {
-        mGoogleApiClient = GoogleApiClient.Builder(this)
-                .addConnectionCallbacks(this)
-                .addOnConnectionFailedListener(this)
-                .addApi(LocationServices.API)
-                .build()
+    private fun buttonsLogic() {
+
+        clipToBoard!!.setOnClickListener {
+            var clipboard: ClipboardManager = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+            var clip: ClipData = ClipData.newPlainText("Your location", mainContent!!.text)
+            clipboard.primaryClip = clip
+            Toast.makeText(this@MapsActivity,"Copied to clipboard.",Toast.LENGTH_SHORT).show()
+        }
+
+        shareLocation!!.setOnClickListener {
+            var uri: String = "geo:" + lat!! + "," +lon!! + "?q=" + lat!! +"," + lon!!
+            startActivity(Intent(android.content.Intent.ACTION_VIEW,
+                    Uri.parse(uri)))
+        }
+
+    }
+
+    private fun performSlidingOperation() {
+
+        slidingUpPanelLayout!!.setFadeOnClickListener {
+            slidingUpPanelLayout!!.panelState= SlidingUpPanelLayout.PanelState.COLLAPSED }
+
     }
 
     private fun displayLocationSettingsRequest() {
@@ -75,30 +104,27 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback,
         builder.setAlwaysShow(true)
 
         val result = LocationServices.SettingsApi.checkLocationSettings(googleApiClient, builder.build())
-        result.setResultCallback(object : ResultCallback<LocationSettingsResult> {
-            override fun onResult(result: LocationSettingsResult) {
-                val status = result.status
-                when (status.statusCode) {
-                    LocationSettingsStatusCodes.SUCCESS -> {
-                    }
+        result.setResultCallback { result ->
+            val status = result.status
+            when (status.statusCode) {
+                LocationSettingsStatusCodes.SUCCESS -> {
+                }
 
 
-                    LocationSettingsStatusCodes.RESOLUTION_REQUIRED -> {
+                LocationSettingsStatusCodes.RESOLUTION_REQUIRED -> {
 
-                        try {
-                            // Show the dialog by calling startResolutionForResult(), and check the result
-                            // in onActivityResult().
-                            status.startResolutionForResult(this@MapsActivity, REQUEST_CHECK_SETTINGS)
-                        } catch (e: IntentSender.SendIntentException) {
-                        }
-                    }
-
-                    else -> {
-
+                    try {
+                        // Show the dialog by calling startResolutionForResult(), and check the result
+                        // in onActivityResult().
+                        status.startResolutionForResult(this@MapsActivity, REQUEST_CHECK_SETTINGS)
+                    } catch (e: IntentSender.SendIntentException) {
                     }
                 }
+
+                else -> {
+                }
             }
-        })
+        }
     }
 
     private fun getCurrentLocation() {
@@ -134,20 +160,42 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback,
                 var latitude = location!!.latitude
                 var longitude = location!!.longitude
 
-                var latLng = LatLng(latitude, longitude)
+                lat=latitude
+                lon=longitude
+
+                val latLng = LatLng(latitude, longitude)
+
+                mMap.animateCamera(CameraUpdateFactory.newLatLngZoom(latLng, 13F))
+
+                var cameraPosition = CameraPosition.Builder()
+                        .target(latLng)      // Sets the center of the map to location user
+                        .zoom(17F)                   // Sets the zoom
+                        .bearing(90F)                // Sets the orientation of the camera to east
+                        .tilt(40F)                   // Sets the tilt of the camera to 30 degrees
+                        .build()                // Creates a CameraPosition from the builder
+
+                mMap.animateCamera(CameraUpdateFactory.newCameraPosition(cameraPosition))
 
                 var geocoder = Geocoder(this@MapsActivity, Locale.getDefault())
                 var addresses: MutableList<Address>? = geocoder.getFromLocation(latitude,longitude,1)
 
-                var address = addresses!!.get(0).getAddressLine(0)
-                var city = addresses!!.get(0).locality
-                var state = addresses!!.get(0).adminArea
-                var country = addresses!!.get(0).countryName
-                var postalCode = addresses!!.get(0).postalCode
-                var knownName = addresses!!.get(0).featureName
+                var address = addresses!![0].getAddressLine(0)
+                var city = addresses!![0].locality
+                var state = addresses!![0].adminArea
+                var country = addresses!![0].countryName
+                var postalCode = addresses!![0].postalCode
+                var knownName = addresses!![0].featureName
 
-                mMap.addMarker(MarkerOptions().position(latLng).title(city))
+                mMap.clear()
+                mMap.addMarker(MarkerOptions().position(latLng).title(address))
                 mMap.moveCamera(CameraUpdateFactory.newLatLng(latLng))
+
+                mainContent!!.setText("Address: "+address+"\n\n"+
+                "City: "+city+"\n\n"+
+                "State: "+state+"\n\n"+
+                "Country: "+country+"\n\n"+
+                "Postal code: "+postalCode+"\n\n"+
+                "Known name: "+knownName)
             }
         }
 
@@ -176,11 +224,11 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback,
                 if (requestCode == REQUEST_CODE) {
                     if (grantResults.size == 1
                             && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                        mMap.isMyLocationEnabled = true
                         getCurrentLocation()
                     } else {
                         // Permission was denied or request was cancelled
                         Toast.makeText(this, "permission denied", Toast.LENGTH_SHORT).show()
-                        finish()
                     }
                 }
 
@@ -204,6 +252,19 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback,
         //val sydney = LatLng(-34.0, 151.0)
         /*mMap.addMarker(MarkerOptions().position(sydney).title("Marker in Sydney"))
         mMap.moveCamera(CameraUpdateFactory.newLatLng(sydney))*/
+        mMap.uiSettings.isMapToolbarEnabled = false
+
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
+            if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_FINE_LOCATION)
+                    == PackageManager.PERMISSION_GRANTED) {
+                mMap.isMyLocationEnabled = true
+            }
+            else {
+                ActivityCompat.requestPermissions(this, arrayOf(android.Manifest.permission.ACCESS_FINE_LOCATION),
+                        REQUEST_CODE)
+            }
+        }
+
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
@@ -226,6 +287,10 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback,
                         else{
                             getCurrentLocation()
                         }
+                    }
+
+                    Activity.RESULT_CANCELED ->{
+                        finish()
                     }
                 }
         }
