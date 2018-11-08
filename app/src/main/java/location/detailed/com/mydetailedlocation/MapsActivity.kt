@@ -268,7 +268,7 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback,
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        val states: LocationSettingsStates = LocationSettingsStates.fromIntent(data);
+        val states: LocationSettingsStates = LocationSettingsStates.fromIntent(data)
         when (requestCode) {
             REQUEST_CHECK_SETTINGS ->
                 when (resultCode) {
